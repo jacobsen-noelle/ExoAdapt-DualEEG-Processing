@@ -1,0 +1,195 @@
+% Step 6) IC rejection
+% Perform IC rejection using various criterion
+% Criteria 1-6: Identify bad ICs based on PSD slope,
+%				projection to EMG electrodes (optional), dipole location, residual variance, and ICLabel
+% Criteria 6: Cross-freq. power coupling (PowPowCat)
+% Output stored in EEG.reject.gcompreject (1= reject IC)
+%
+% Noelle Jacobsen, University of Florida
+% Created 17-Oct-2021
+% Last modified 14-Mar-2023
+
+%setup paths
+%myMainOutDir= 'R:\Ferris-Lab\jacobsen.noelle\Split Belt Pilot Study\';
+myMainOutDir= 'G:\splitbelt-study\standing-pre-post-data';
+outputFolder= strcat(myMainOutDir,'\BATCH-EEG-', datestr(now, 'yyyy-mm-dd'),'-Step6-IC Rejection\');
+eeglabPath = 'C:\Users\jacobsen.noelle\Desktop\eeglab2022.0';
+EEG_Processing_Path = 'C:\Users\jacobsen.noelle\Documents\GitHub\EEG_Processing';
+
+
+%setup paths
+datasetinfo_folder = myMainOutDir; %folder with master file
+if ~exist(outputFolder, 'dir') %check to see if output folder exists, if not make new one
+    mkdir(outputFolder);
+end
+outputFigureFolder= strcat(outputFolder,'Figures');
+
+%setup paths
+addpath(EEG_Processing_Path)
+addpath([EEG_Processing_Path,'\helper-functions']);
+
+%Select EEG datasets
+    FILTERSPEC = '*.set';
+    TITLE = 'Load EEG dataset';
+    [ EEGfileList  EEGinputFolder] = uigetfile(FILTERSPEC, TITLE,'MultiSelect', 'on');
+ %find length of file list based on type of variable
+    if iscell(EEGfileList) %array of chars
+        L = length(EEGfileList);
+    elseif ischar(EEGfileList)
+        L = size(EEGfileList,1);
+    else
+        disp('Error in file type selected');
+    end
+
+%track progress and keep notes
+tStart = tic;
+count = 0;
+cd(outputFolder)
+diary ON
+disp('Step 6- IC rejection')
+date
+disp(EEGfileList)
+
+%% loop through datasets
+fin = []; count = 0;
+for subi=1:L
+mytic= tic;
+    %  Open EEGlab (if not already open) and load EEG files
+ if iscell(EEGfileList) %array of chars
+        EEGfile = EEGfileList {subi};
+    elseif ischar(EEGfileList) %one char
+        EEGfile = EEGfileList;
+    elseif isstruct(EEGfileList)
+        EEGfile = EEGfileList(subi).name;
+    else
+        disp('Error in file type selected');
+    end
+
+    diary OFF
+if ~exist('ALLCOM')
+    addpath(eeglabPath)
+    [ALLEEG EEG CURRENTSET ALLCOM] = eeglab;
+end
+
+EEG = pop_loadset('filename',EEGfile,'filepath',EEGinputFolder);
+[ALLEEG, EEG, CURRENTSET] = eeg_store( ALLEEG, EEG, CURRENTSET);
+EEG = eeg_checkset( EEG );
+eeglab redraw;
+myEEGfilename = EEG.filename;
+diary ON
+
+%% Criteria 1-5: Identify bad ICs based on PSD slope, projection to EMG electrodes (optional), dipole location, residual variance, and ICLabel
+opt.RVthresh = 0.15;
+opt.PSD_slope_thresh = 0; 
+opt.MRI_folder =  [rawdataFolder,'\PHD',num2str(subject_num+14),'_',EEG.subject,'\Head Model']; %head model folder
+opt.ICLabel_brain_thresh = 0.5;% ICLabel class probability 'brain'    
+EEG = IC_rejection(EEG,outputFigureFolder, opt);
+[ALLEEG EEG CURRENTSET] = eeg_store(ALLEEG, EEG, CURRENTSET);
+% EEG = pop_saveset( EEG, 'savemode','resave');
+% [ALLEEG EEG] = eeg_store(ALLEEG, EEG, CURRENTSET);
+% eeglab redraw
+gcompreject = EEG.reject.gcompreject;
+
+%% Criteria 6: PowPowCat
+% only calculate for ICs that make it through first pass to save computation time
+goodIcIdx = find(EEG.reject.gcompreject ==0);
+fprintf('Pruning dataset...');
+tempEEG = pop_subcomp(EEG, goodIcIdx', 0, 1); %extracting good ICs
+tempEEG.setname  = strcat(EEG.subject,' Pruned good IC Index (PSD slope, RV, EMG projection, dipole location,>50% brain');
+% Post-process to update EEG.icaact.
+tempEEG.icaact = [];
+tempEEG= eeg_checkset(tempEEG, 'ica');
+%tempEEG = pop_saveset(tempEEG, 'filename', strcat(extractBefore(myEEGfilename,'.set'),'_pruned'),'filepath',outputFolder, 'version', '7.3');
+
+% PowPowCAT on "good" ICs
+% Extract components on which you want to perform PowPowCAT. Recommended to selected
+% only ICs of interest due calculation time (~6.5 min/IC)
+fprintf('Setting up PowPowCAT....');
+%powpowcat parameters
+upperFreqLimit = 100; %Frequency in Hz
+inputDataType = 2; %1, electrode data; 2, ICA time series
+methodType = 2;%Pearson's correlation; 2, Speaman's correlation
+fprintf('PowPowCAT parameters:\n upperFreqLimit= %i Hz\n inputDataType = ICs\n methodType= Spearman''s correlation (non-parametric)\n',upperFreqLimit);
+
+%run PowPowCAT
+tempEEG = calc_PowPowCAT_noStats(tempEEG, upperFreqLimit, inputDataType, methodType);
+
+%reject components with high cross-freq coupling
+%badPPC_IC = PowPowCat_ICrej(tempEEG,'plotstuff',1,'savePath',outputFigureFolder);
+plotstuff = 1;
+badPPC_IC = PowPowCat_ICrej(tempEEG,plotstuff,outputFigureFolder);
+badPPC_IC = goodIcIdx (badPPC_IC); %revert back to original IC ordering
+
+EEG.reject.gcompreject(badPPC_IC)=1;
+EEG.etc.PowPowCAT = tempEEG.etc.PowPowCAT; 
+EEG.etc.comp_reject.PowPowCat = zeros(size(EEG.icaact,1),1); 
+EEG.etc.comp_reject.PowPowCat(badPPC_IC) =1; 
+EEG.comments = pop_comments(EEG.comments,'','PowPowCat run on ICs that made it through first pass',1);
+EEG.filename = strcat(extractBefore(myEEGfilename,'.set'),'_ICRej');
+[ALLEEG EEG CURRENTSET] = eeg_store(ALLEEG, EEG, 0);
+EEG = pop_saveset(EEG, 'filename', strcat(extractBefore(myEEGfilename,'.set'),'_ICRej'),'filepath',outputFolder, 'version', '7.3');
+%eeglab redraw
+
+%% estimate time remaining
+     fprintf('\nFinished file %i/%i\n', subi,L);
+     t_remaining(mytic,fin,count,L)
+    close all;
+clearvars -except EEG EEGfileList EEGinputFolder tStart count outputFolder outputFolder2 X datasetinfo datasetinfo_folder outputFigureFolder outputFigureFolder2 L eeglabPath
+
+end
+
+%Measure elapsed time
+tEnd = toc(tStart);
+elapsed_min= tEnd/60; %minutes
+elapsed_hr = 0;
+if elapsed_min>120
+    R = rem(elapsed_min,60);
+    elapsed_hr = floor(elapsed_min/60); %hrs
+    elapsed_min= round(R);
+end
+fprintf('Total run time = %i hours and %.f minutes',elapsed_hr, elapsed_min) 
+diary OFF
+
+
+% % ========================================================================
+% %       Visual Inspection
+% % ========================================================================
+% %% manually identify dipoles outside of head
+% gcompreject = EEG.reject.gcompreject;
+% goodICs = find(gcompreject==0);
+% pop_dipplot( EEG, [goodICs] ,'mri','C:\\Users\\jacobsen.noelle\\Desktop\\eeglab2021.0\\plugins\\dipfit4.1\\standard_BEM\\standard_mri.mat','cornermri','on','axistight','on','normlen','on');
+% outside_brain_idx = input('Enter ICs outside of brain: ');
+% pop_viewprops( EEG, 0, [outside_brain_idx], {'freqrange', [2 80]}, {}, 1, 'ICLabel' )
+%% visually PowPowCat inspection
+% f = strcat(EEG.subject,'_splitbelt_events');
+% event_file = find(strcmpi({datasetinfo.file},f));
+% gcompreject = datasetinfo(event_file).ICRej.gcompreject; %good IC index before PowPowCat
+% goodIcIdx = find(gcompreject ==0);
+% checkComps = input('Enter ICs index from PowPowCat to plot component properties: ');
+% disp([goodIcIdx(checkComps)])
+% pop_viewprops( EEG, 0, [goodIcIdx(checkComps)], {'freqrange', [2 80]}, {}, 1, 'ICLabel' )
+%%
+% %% bad PPC
+% bad_PPC_idx = input('Enter ICs to remove (original IC #): ');
+% disp(bad_PPC_idx)
+% %% remove components
+% fprintf('Removing components:\n ')
+% fprintf('\t\t%i\n', sort([outside_brain_idx bad_PPC_idx]));
+% EEG.reject.gcompreject([outside_brain_idx bad_PPC_idx]) = 1;
+% goodICs = find(EEG.reject.gcompreject==0);
+% pop_viewprops( EEG, 0, [goodICs], {'freqrange', [2 80]}, {}, 1, 'ICLabel' )
+% pop_dipplot( EEG, [goodICs] ,'mri','C:\\Users\\jacobsen.noelle\\Desktop\\eeglab2021.0\\plugins\\dipfit4.1\\standard_BEM\\standard_mri.mat','cornermri','on','axistight','on','normlen','on');
+% [ALLEEG EEG] = eeg_store(ALLEEG,EEG,CURRENTSET);
+% EEG = pop_saveset( EEG, 'savemode','resave');
+% [ALLEEG EEG] = eeg_store(ALLEEG, EEG, CURRENTSET);
+% %% save dataset info
+% f = strcat(EEG.subject,'_splitbelt_events');
+% event_file = find(strcmpi({datasetinfo.file},f));
+% datasetinfo(event_file).ICRej.gcompreject = EEG.reject.gcompreject; %good IC index
+% disp('done')
+% %% 
+%  fprintf('Writing mask to dataset master file stored here: %s\n', datasetinfo_folder);
+% cd(datasetinfo_folder)
+% save('SplitbeltStudy_datasetinfo_master.mat','datasetinfo')
+% 
+% clear bad_PPC_idx outside_brain_idx

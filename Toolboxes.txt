@@ -1,0 +1,4 @@
+eBridge.m 	Alschuler et al (2014). Clin Neurophysiol, 125(3), 484-490.
+cleanrawdata
+cleanline
+trimOutliers

@@ -1,0 +1,5 @@
+%compile dipfit scripts
+cd /blue/dferris/jacobsen.noelle/CustomHeadModel/2_dipfit
+
+module load matlab
+mcc -m dipfit_customHeadModel_hpg.m -a /blue/dferris/jacobsen.noelle/fieldtrip-20210614/ft_dipolefitting.m /blue/dferris/jacobsen.noelle/eeglab2022.0/functions/popfunc/pop_loadset.m /blue/dferris/jacobsen.noelle/eeglab2022.0/plugins/Fieldtrip-lite20220603/external/eeglab/eeglab2fieldtrip.m -a /blue/dferris/jacobsen.noelle/fieldtrip-20210614/utilities -a /blue/dferris/jacobsen.noelle/fieldtrip-20210614/forward -a /blue/dferris/jacobsen.noelle/fieldtrip-20210614/fileio -a /blue/dferris/jacobsen.noelle/fieldtrip-20210614/external/simbio -a /blue/dferris/jacobsen.noelle/fieldtrip-20210614/inverse/ft_inverse_dipolefit.m

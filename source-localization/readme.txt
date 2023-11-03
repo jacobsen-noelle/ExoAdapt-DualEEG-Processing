@@ -1,0 +1,1 @@
+These folders contain scripts to 1) compute a custom head model and 2) perform source localization using EEGlab DIPFIT that are run on the Hipergator Supercomputer

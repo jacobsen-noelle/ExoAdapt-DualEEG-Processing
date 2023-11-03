@@ -1,0 +1,166 @@
+%Step 7 epoch to gait events, create
+%time warp matrix
+%Modified by Noelle 2/7/20
+%Modified by Noelle 5/18/21
+%Big modification by Noelle 9/4/21 changing sub condition labeling
+%Last modified 1/6/23 
+clc; clear all; close all; %clearvars -except fileList
+FILTERSPEC = '*.set';
+TITLE = 'Load EEG dataset';
+[fileList inputFolder] = uigetfile(FILTERSPEC, TITLE,'MultiSelect', 'on');
+fileList = cellstr(fileList);
+cd(inputFolder)
+mydir = 'R:\Ferris-Lab\jacobsen.noelle\Exo Adaptation\Data\processed_data\';
+outputFolder= [mydir,datestr(now, 'yyyy-mm-dd'),'-Step5-Epoch-Timewarp'];
+
+if ~exist(outputFolder, 'dir') %check to see if output folder exists, if not make new one
+    mkdir(outputFolder);
+end
+datasetinfo_folder='R:\Ferris-Lab\jacobsen.noelle\Exo Adaptation\Data\processed_data'; %main dataset info sheet for study, stores good/bad epochs
+%% Startup EEGlab if not already running
+if ~exist('ALLCOM')
+    [ALLEEG EEG CURRENTSET ALLCOM] = eeglab;
+end
+datasetinfo =struct([]);
+%% Loop through files
+fin = []; count = 0;
+for subi = 1:length(fileList)
+    %% Load dataset from file list
+    mytic = tic;
+    file = fileList(subi);
+    
+    if ~exist('ALLCOM')
+        eeglab;
+        [ALLEEG EEG CURRENTSET ALLCOM] = eeglab;
+    end
+    
+    cd(inputFolder)
+    EEG = pop_loadset('filename',file,'filepath',inputFolder);
+    [ALLEEG, EEG, CURRENTSET] = eeg_store( ALLEEG, EEG, 0 );
+    EEG = eeg_checkset( EEG );
+    eeglab redraw;
+    %check subject code format (STUDY doesn't like just a number)
+    if strcmp(class(EEG.subject),'double')
+        EEG.subject = strcat('S',num2str(EEG.subject));
+    end
+    filename= extractBefore(EEG.filename,'.set'); %use for saving datasets later
+    %% Epoching
+    EEG = pop_epoch(EEG,{'RHS'},[-1 2.5],'newname', 'HeelStrikeEvents epochs', 'epochinfo', 'yes');
+    EEG = eeg_checkset( EEG );
+    EEG.setname = strcat(EEG.subject,' Epoched');
+    EEG=eeg_checkset(EEG);
+    %% Time warping
+    events={'RHS', 'LTO', 'LHS', 'RTO', 'RHS'}; %My previously defined events, I specify which to warp to
+    timewarp = make_timewarp(EEG,events,'baselineLatency',0, ...
+        'maxSTDForAbsolute',3,...
+        'maxSTDForRelative',3);
+    timewarp.warpto = median(timewarp.latencies); % Will be used in newtimef, group analysis uses median of these warpto values in mod_std_precomp_v10_1_5_5a.m
+    EEG.timewarp = timewarp;
+    median_latency=median(timewarp.latencies(:,5)); %Warping to the median latency of my 5 events
+    EEG.timewarp.medianlatency = median_latency;
+    
+    %Getting rid of bad epochs
+    goodepochs=sort([timewarp.epochs]);
+    EEG=eeg_checkset(EEG);
+    notneeded=[];
+    badepochs=setdiff(1:length(EEG.epoch),goodepochs);
+    EEG.etc.badepochs = badepochs;
+    EEG = pop_select( EEG,'notrial',badepochs );
+    
+    %% label early and late stage
+    %use function EEG = tag_splitbelt_subconditions(EEG, beginningString, numEpochs, sub_condition_name)
+    %%use function EEG = tag_splitbelt_subconditions(EEG, StartString,begOrEnd,numEpochs,epoch_start_delay,sub_condition_name)
+    EEG = tag_exo_subconditions(EEG, 'noExo','end',-30,0,'noExo');
+    %%
+    EEG = tag_exo_subconditions(EEG, 'unpow','end',-30,0,'unpow');  
+    EEG = tag_exo_subconditions(EEG, 'pow_1','beginning',30,0,'early adapt');
+    EEG = tag_exo_subconditions(EEG, 'pow_3','end',-30,0,'late adapt');
+    EEG = tag_exo_subconditions(EEG, 'deadapt','beginning',30,0,'early post-adapt');
+    EEG = tag_exo_subconditions(EEG, 'deadapt','end',-30,0,'late post-adapt');   
+    
+    disp('Sub conditions have been labeled in EEG.event')
+    %fill in empty cells so STUDY is happy later
+    empty_ind = find(cellfun(@isempty,{EEG.event.subcond}));
+    [EEG.event(empty_ind).subcond] = deal('none');
+    empty_ind = find(cellfun(@isempty,{EEG.event.cond}));
+    [EEG.event(empty_ind).cond] = deal('none');
+ 
+    %% save dataset
+    EEG.filename = strcat(filename,'_epoched');
+    [ALLEEG, EEG, CURRENTSET] = eeg_store( ALLEEG, EEG, CURRENTSET);
+    eeglab redraw;
+    EEG = pop_saveset( EEG, 'filename',EEG.filename,'filepath',outputFolder, 'version', '7.3');
+    %% save epoch rejection info
+    % find event file based on subject
+    cd(datasetinfo_folder)
+    f = strcat(EEG.subject,'_exo_events');
+    epochreject = zeros(length(EEG.epoch),1);
+    epochreject(badepochs) =1;
+    datasetinfo(subi).filename = EEG.filename;
+    datasetinfo(subi).epoch.epochreject = epochreject; %good IC index
+    %
+    fprintf('\nFinished file %i/%i\n', subi,length(fileList));
+    t_remaining(mytic,fin,count,length(fileList))
+    close all;
+    clear EEG ALLCOM ALLEEG CURRENTSET
+end
+% close all;
+fprintf('Writing mask to dataset master file stored here: %s\n', datasetinfo_folder);
+save('ExoStudy_datasetinfo.mat','datasetinfo')
+fprintf('Yay all done!');
+
+
+function EEG = tag_exo_subconditions(EEG, StartString,begOrEnd,numEpochs,epoch_start_delay,sub_condition_name)
+cond_events =  find(strcmp(StartString,{EEG.event.cond}));
+if diff(cond_events)~=1
+    error('There are gaps in the condition. Please fix')
+else
+    if strcmpi(begOrEnd,'beginning')
+        cond_start = cond_events(1); %beginning of condition is the first event that shows up with that condition name
+    elseif strcmpi(begOrEnd,'end')
+        cond_start = cond_events(end);
+    else
+        error('Please indicate beginning or end of condition')
+    end
+    epoch_start = EEG.event(cond_start).epoch + epoch_start_delay;
+    epoch_end= epoch_start + numEpochs;
+    if epoch_end > EEG.event(cond_events(end)).epoch
+        epoch_end_ind =cond_events(end);
+    else
+    ind = find(epoch_end==[EEG.event(cond_events).epoch]);
+    epoch_end_ind = cond_events(ind);
+    end
+    if epoch_end>epoch_start %option in case you want to go backwards in # of epochs from condition (late period)
+        cond_range = [cond_start:epoch_end_ind(end)];
+    elseif epoch_end<epoch_start
+        if isempty(epoch_end_ind)
+        cond_range = [epoch_end_ind(end):cond_start];
+    end
+    
+    [EEG.event(cond_range).subcond] = deal(sub_condition_name);
+end
+end
+
+% myevents = EEG.originaldata.event;
+%     B1 = find(strcmp('B1',{ myevents.cond}));
+%     B2 = find(strcmp('B2',{ myevents.cond}));
+%     B3 = find(strcmp('B3',{ myevents.cond}));
+%     SB1 = find(strcmp('SB1',{ myevents.cond}));
+%     P1 = find(strcmp('P1',{ myevents.cond}));
+%     SB2 = find(strcmp('SB2',{ myevents.cond}));
+%     P2 = find(strcmp('P2',{ myevents.cond}));
+%     BUTTON = find(strcmp('BUTTON',{ myevents.type}));
+%     figure;
+%     stem([EEG.event(B1).latency], ones(size([ myevents(B1).latency]))*2,'g');
+%     hold on;
+%     stem([EEG.event(B2).latency],ones(size([ myevents(B2).latency]))*3,'b');
+%     stem([EEG.event(B3).latency],ones(size([ myevents(B3).latency]))*4,'m');
+%     stem([EEG.event(SB1).latency],ones(size([ myevents(SB1).latency]))*5,'c');
+%     stem([EEG.event(P1).latency],ones(size([ myevents(P1).latency]))*6,'y')
+%     stem([EEG.event(SB2).latency],ones(size([ myevents(SB2).latency]))*7,'r');
+%     stem([EEG.event(P2).latency],ones(size([ myevents(P2).latency]))*8,'g');
+%     stem([EEG.event(BUTTON).latency],ones(size([ myevents(BUTTON).latency])),'k');
+
+
+    
+ 

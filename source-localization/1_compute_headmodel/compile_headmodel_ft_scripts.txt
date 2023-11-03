@@ -1,0 +1,21 @@
+%compile matlab script
+cd blue/dferris/jacobsen.noelle/CustomHeadModel/1_compute_headmodel
+
+module load matlab
+
+mcc -m compute_headmodel_hpg.m -a /blue/dferris/jacobsen.noelle/fieldtrip-20210614
+ #ERROR using parseFile, syntax errors with various scripts in toolbox. If I remove the script, it stops on a different script-- no
+ 
+
+mcc -m compute_headmodel_hpg.m -a /blue/dferris/jacobsen.noelle/fieldtrip-20210614/forward/ft_prepare_vol_sens.m /blue/dferris/jacobsen.noelle/fieldtrip-20210614/ft_prepare_leadfield.m /blue/dferris/jacobsen.noelle/fieldtrip-20210614/ft_prepare_sourcemodel.m
+#ERROR Unrecognized function or variable 'ft_trackusage'. -- utilities function
+
+
+mcc -m compute_headmodel_hpg.m -a /blue/dferris/jacobsen.noelle/fieldtrip-20210614/forward/ft_prepare_vol_sens.m /blue/dferris/jacobsen.noelle/fieldtrip-20210614/ft_prepare_leadfield.m /blue/dferris/jacobsen.noelle/fieldtrip-20210614/ft_prepare_sourcemodel.m /blue/dferris/jacobsen.noelle/fieldtrip-20210614/utilities/ft_trackusage.m
+#ERROR< missing ft_filetype
+
+mcc -m compute_headmodel_hpg.m -a /blue/dferris/jacobsen.noelle/fieldtrip-20210614/forward/ft_prepare_vol_sens.m /blue/dferris/jacobsen.noelle/fieldtrip-20210614/ft_prepare_leadfield.m /blue/dferris/jacobsen.noelle/fieldtrip-20210614/ft_prepare_sourcemodel.m -a /blue/dferris/jacobsen.noelle/fieldtrip-20210614/utilities -a /blue/dferris/jacobsen.noelle/fieldtrip-20210614/fileio
+#ERROR no sb_transfer
+
+mcc -m compute_headmodel_hpg.m -a /blue/dferris/jacobsen.noelle/fieldtrip-20210614/forward/ft_prepare_vol_sens.m /blue/dferris/jacobsen.noelle/fieldtrip-20210614/ft_prepare_leadfield.m /blue/dferris/jacobsen.noelle/fieldtrip-20210614/ft_prepare_sourcemodel.m -a /blue/dferris/jacobsen.noelle/fieldtrip-20210614/utilities -a /blue/dferris/jacobsen.noelle/fieldtrip-20210614/fileio -a /blue/dferris/jacobsen.noelle/fieldtrip-20210614/external/simbio
+#FINALLY WORKED
