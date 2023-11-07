@@ -1,4 +1,4 @@
-eBridge.m 	Alschuler et al (2014). Clin Neurophysiol, 125(3), 484-490.
-cleanrawdata
-cleanline
-trimOutliers
+- eBridge:	Alschuler et al (2014). Clin Neurophysiol, 125(3), 484-490.
+- cleanrawdata: Christian Kothe from the BCILAB Toolbox (Kothe & Makeig, 2013), first wrapped into an EEGLAB plug-in by Makoto Miyakoshi and further developed by Arnaud Delorme with Scott Makeig.
+- cleanline: Tim Mullen 
+- trimOutliers: Clement Lee and Makoto Miyakoshi. SCCN, INC, UCSD
