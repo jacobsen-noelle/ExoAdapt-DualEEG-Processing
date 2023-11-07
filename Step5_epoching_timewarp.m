@@ -1,8 +1,5 @@
 %Step 7 epoch to gait events, create
-%time warp matrix
-%Modified by Noelle 2/7/20
-%Modified by Noelle 5/18/21
-%Big modification by Noelle 9/4/21 changing sub condition labeling
+% time warp matrix
 %Last modified 1/6/23 
 clc; clear all; close all; %clearvars -except fileList
 FILTERSPEC = '*.set';
