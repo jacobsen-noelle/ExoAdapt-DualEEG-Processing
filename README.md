@@ -4,7 +4,7 @@ All local data processing is written for MATLAB and relies heavily on the EEGLAB
 
 These are the steps for dual-EEG processing:
 1) Dual-EEG Preprocessing
-   This step uses dual-electrode EEG and neck electromyography to isolate and remove motion and muscle artifacts from EEG [1]. It also rejects noisy channels and time windows.
+   This step uses dual-electrode EEG and neck electromyography to isolate and remove motion and muscle artifacts from EEG [1,2]. It also rejects noisy channels and time windows.
 2)  Add AMICA results
    After EEG preprocessing, Adaptive Mixture Indpendent Component Analysis is run on supercomputing resources extract independent components from "clean" scalp EEG data (see AMICA folder). This steps pulls results from the supercompter and adds the ICA matrix to the EEG dataset.
 3) Add DIPFIT results
